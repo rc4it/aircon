@@ -1,16 +1,17 @@
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ParseMode, ReplyKeyboardMarkup, KeyboardButton, Message, Bot, ReplyKeyboardRemove
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackQueryHandler
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackQueryHandler, CallbackContext
 from decimal import Decimal
 from scraper import *
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, create_engine
+from sqlalchemy import Column, Integer, String, create_engine, Float
 from sqlalchemy.orm import sessionmaker
 from scraper import scraper
+import time, datetime, pytz
 
 # creating database
 
-sqlID = ''
-sqlPASSWORD = ''
+sqlID = 'root'
+sqlPASSWORD = 'Password1'
 URI = 'mysql://' + sqlID + ':' + sqlPASSWORD + '@localhost/aircon'
 engine = create_engine(URI, echo = True)
 Base = declarative_base()
@@ -22,7 +23,7 @@ class User(Base):
     username = Column(String(100),primary_key=True)
     evs_username = Column(String(10))
     room_unit_no = Column(String(10))
-    lower_credit_limit = Column(Integer())
+    lower_credit_limit = Column(Float(100))
 
 Base.metadata.create_all(engine)
 
@@ -37,6 +38,7 @@ def isfloat(value):
     except ValueError:
         return False
 
+
 def main_options_keyboard():
     keyboard = [
         [InlineKeyboardButton("Update Room Information", callback_data='update_id')],
@@ -49,16 +51,17 @@ def main_options_keyboard():
 def start(update, context):
     print("UPDATE:", update)
     print("CONTEXT:", context)
-
+    global chat_id
     chat_id = update.message.chat.id
     global username
     username = update.message.from_user.username
 
     # search table for specific user according to tele handle 
     # creates a 'user' object, which has attributes which correspond to the rows of the table 
+    # if unsuccessful (data is not present), will return None 
     user = session.query(User).get(username)
     
-    if user != None:  # if user has already registered 
+    if user != None:  # if user has previously used the bot 
 
         global room_unit_no
         room_unit_no = user.room_unit_no  
@@ -80,20 +83,15 @@ def start(update, context):
     )
     return UPDATE_ID
 
-# /cancel
-def cancel(update,context):
-	
-    update.message.reply_text("Your session has been terminated. Please type /start to begin a new one.", reply_markup=ReplyKeyboardRemove())
-
-    return ConversationHandler.END
-
 # New User
 UPDATE_ID, UPDATE_NOTIF, UPDATE_END = range(3)
 def prompt_id(update, context):
     chat_id = update.message.chat.id
     user_input = update.message.text.replace(" ", "")
 
-    
+    if (user_input == "/cancel"):
+        update.message.reply_text("Your session has been terminated. Please type /start to begin a new one.", reply_markup=ReplyKeyboardRemove())
+        return ConversationHandler.END
 
     if (len(user_input) != 7 and len(user_input) != 6) or (user_input[0] != '#') or (user_input[3] != '-'):
         context.bot.send_message(
@@ -137,7 +135,9 @@ def prompt_notif(update, context):
     chat_id = update.message.chat.id
     user_input = update.message.text.replace(" ", "")
     
-    
+    if (user_input == "/cancel"):
+        update.message.reply_text("Your session has been terminated. Please type /start to begin a new one.", reply_markup=ReplyKeyboardRemove())
+        return ConversationHandler.END
 
     if not (user_input.isdigit() and len(user_input) == 8):
         context.bot.send_message(
@@ -169,7 +169,9 @@ def prompt_end_buttons(update, context):
     chat_id = update.message.chat.id
     user_input = update.message.text.replace(" ", "")
 
-    
+    if (user_input == "/cancel"):
+        update.message.reply_text("Your session has been terminated. Please type /start to begin a new one.", reply_markup=ReplyKeyboardRemove())
+        return ConversationHandler.END
 
     if not ((user_input.isdigit()) or isfloat(user_input)):
         context.bot.send_message(
@@ -216,7 +218,9 @@ def prompt_notif_end(update, context):
     chat_id = update.message.chat.id
     user_input = update.message.text.replace(" ", "")
     
-    
+    if (user_input == "/cancel"):
+        update.message.reply_text("Your session has been terminated. Please type /start to begin a new one.", reply_markup=ReplyKeyboardRemove())
+        return ConversationHandler.END
 
     if not (user_input.isdigit() and len(user_input) == 8):
         context.bot.send_message(
@@ -236,7 +240,6 @@ def prompt_notif_end(update, context):
         )
         return UPDATE_ID
 
-    # update database with new evs username and room number 
     user = session.query(User).get(username)
 
     # modifying existing values in the database to new ones 
@@ -272,7 +275,9 @@ def prompt_end(update, context):
     chat_id = update.message.chat.id
     user_input = update.message.text.replace(" ", "")
 
-    
+    if (user_input == "/cancel"):
+        update.message.reply_text("Your session has been terminated. Please type /start to begin a new one.", reply_markup=ReplyKeyboardRemove())
+        return ConversationHandler.END
 
     if not ((user_input.isdigit()) or isfloat(user_input)):
         context.bot.send_message(
@@ -305,11 +310,12 @@ def prompt_end(update, context):
 def check_balance(update, context):
     query = update.callback_query
 
-    # use information from database and scraper to return output 
-
+    # extract information from database, passing into scraper to return output 
     user = session.query(User).get(username)
+
     evs_username = user.evs_username
     room_unit_no = user.room_unit_no
+
     balance = scraper(evs_username,room_unit_no)
 
     context.bot.edit_message_text(
@@ -326,8 +332,31 @@ def check_balance(update, context):
 
     return ConversationHandler.END
 
+# Send Notification
+    
+def send_notification(context):  
+    username = update.message.from_user.username
+
+    user = session.query(User).get(username)
+    evs_username = user.evs_username
+    room_unit_no = user.room_unit_no
+    lower_credit_limit = user.lower_credit_limit
+
+    # this returns the full string e.g. 'total balance: $ 1.50' 
+    balance = scraper(evs_username,room_unit_no)
+
+    # indexing the dollar sign to extract the '1.50' from the above string
+    index = balance.index('$')
+    value = float(balance[index+2:])
+
+    
+    context.bot.send_message(
+        "Your credit balance is currently: $" + value + ". You can top up at https://nus-utown.evs.com.sg/."
+    )
+    return
+
 # main()
-BOT_TOKEN = "1498781046:AAEtpdoE6uorK4iCpjTj-YNvBMIA3pIimAc"
+BOT_TOKEN = "1516406701:AAHdjI6pD-XJv0ginCR_3zZJGkEAfLDuYWA"
 def main():
     updater = Updater(BOT_TOKEN, use_context=True)
     dp = updater.dispatcher
@@ -342,7 +371,7 @@ def main():
                 UPDATE_NOTIF: [MessageHandler(Filters.text, prompt_notif)],
                 UPDATE_END: [MessageHandler(Filters.text, prompt_end_buttons)]
             },
-            fallbacks=[CommandHandler('cancel',cancel)],
+            fallbacks=[],
             per_user=False
         )
     )
@@ -353,7 +382,7 @@ def main():
                 UPDATE_ID: [MessageHandler(Filters.text, prompt_id)],
                 UPDATE_NOTIF: [MessageHandler(Filters.text, prompt_notif_end)],
             },
-            fallbacks=[CommandHandler('cancel',cancel)],
+            fallbacks=[],
             per_user=False
         )
     )
@@ -364,12 +393,16 @@ def main():
             states={
                 UPDATE_END: [MessageHandler(Filters.text, prompt_end)]
             },
-            fallbacks=[CommandHandler('cancel',cancel)],
+            fallbacks=[],
             per_user=False
         )
     )
 
     dp.add_handler(CallbackQueryHandler(check_balance, pattern='check_balance'))
+
+    time_zone = pytz.timezone("Asia/Singapore")
+    reset_time = datetime.time(hour=19, minute=6, second=0, tzinfo=time_zone)
+    updater.job_queue.run_daily(send_notification, reset_time)
 
     updater.start_polling()
     updater.idle()
