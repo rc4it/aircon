@@ -1,29 +1,5 @@
 sqlID = 'root'
-sqlPASSWORD = 'Biryani158*'
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+sqlPASSWORD = 'Password1'
 
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ParseMode, ReplyKeyboardMarkup, KeyboardButton, Message, Bot, ReplyKeyboardRemove
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackQueryHandler, CallbackContext
@@ -55,12 +31,23 @@ Base.metadata.create_all(engine)
 Session = sessionmaker(bind = engine)
 session = Session()
 
+# cancel 
+def cancel(update):
+    update.message.reply_text("Your session has been terminated. Please type /start to begin a new one.", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
+    
+# helper function 1
 def isfloat(value):
     try:
         float(value)
         return True
     except ValueError:
         return False
+
+# helper function 2
+def showInfo(room_unit_no,evs_username,lower_credit_limit,update):
+    text2 = "The following is your current information: \n\nRoom Unit Number: " + str(room_unit_no) + "\nEVS Username: " + str(evs_username) + "\nLower Credit Limit: $" + str(lower_credit_limit) + "\n\nYou can access our other functions here!"
+    update.message.reply_text(text=text2, reply_markup=main_options_keyboard())
 
 def main_options_keyboard():
     keyboard = [
@@ -95,14 +82,13 @@ def start(update, context):
         global lower_credit_limit
         lower_credit_limit = user.lower_credit_limit
 
-        text2 = "The following is your current information: \n\nRoom Unit Number: " + str(room_unit_no) + "\nEVS Username: " + str(evs_username) + "\nLower Credit Limit: $" + str(lower_credit_limit) + "\n\nYou can access our other functions here!"
-        update.message.reply_text(text=text2, reply_markup=main_options_keyboard())
+        showInfo(room_unit_no,evs_username,lower_credit_limit,update)
 
         return ConversationHandler.END
 
     context.bot.send_message(
         chat_id=chat_id,
-        text="Hi @" + username + "! Let's get you started! \nMay I know your room unit number? (e.g. #01-01 or #01-01A)"
+        text="Hi @" + username + "! Let's get you started! \nMay I know your room unit number? (e.g. #01-01 or #01-01A), or type /cancel to end your session."
     )
     return UPDATE_ID
 
@@ -113,13 +99,13 @@ def prompt_id(update, context):
     user_input = update.message.text.replace(" ", "")
 
     if (user_input == "/cancel"):
-        update.message.reply_text("Your session has been terminated. Please type /start to begin a new one.", reply_markup=ReplyKeyboardRemove())
-        return ConversationHandler.END
+        cancel(update)
+        return 
 
     if (len(user_input) != 7 and len(user_input) != 6) or (user_input[0] != '#') or (user_input[3] != '-'):
         context.bot.send_message(
         chat_id=chat_id,
-        text='Please key in using this format #xx-xx or #xx-xxx.'
+        text='Please key in using this format #xx-xx or #xx-xxx, or type /cancel to end your session.'
         )
 
         return UPDATE_ID
@@ -127,7 +113,7 @@ def prompt_id(update, context):
     if (len(user_input) == 7) and not (user_input[6].isalpha()):
          context.bot.send_message(
          chat_id=chat_id,
-         text='Please key in using this format #xx-xx or #xx-xxx.'
+         text='Please key in using this format #xx-xx or #xx-xxx, or type /cancel to end your session.'
          )       
          return UPDATE_ID
     
@@ -139,14 +125,14 @@ def prompt_id(update, context):
         if (not user_input[i].isdigit()):
             context.bot.send_message(
             chat_id=chat_id,
-            text='Please key in using this format #xx-xx or #xx-xxx.'
+            text='Please key in using this format #xx-xx or #xx-xxx, or type /cancel to end your session.'
             )
             return UPDATE_ID
         i += 1
 
     global room_unit_no
     room_unit_no = user_input
-    text = "Your room " + user_input + " has been registered. \nPlease enter your EVS Username. (e.g. 12345678)."
+    text = "Your room " + user_input + " has been registered. \nPlease enter your EVS Username. (e.g. 12345678)"
 
     context.bot.send_message(
         text=text,
@@ -159,13 +145,13 @@ def prompt_notif(update, context):
     user_input = update.message.text.replace(" ", "")
     
     if (user_input == "/cancel"):
-        update.message.reply_text("Your session has been terminated. Please type /start to begin a new one.", reply_markup=ReplyKeyboardRemove())
-        return ConversationHandler.END
+        cancel(update)
+        return 
 
     if not (user_input.isdigit() and len(user_input) == 8):
         context.bot.send_message(
         chat_id=chat_id,
-        text='Please enter a valid username.'
+        text='Please enter a valid username or type /cancel to end your session.'
         )
         return UPDATE_NOTIF
 
@@ -176,11 +162,11 @@ def prompt_notif(update, context):
     if scraper(evs_username,room_unit_no) == None:
         context.bot.send_message(
         chat_id=chat_id,
-        text='Your log in details are wrong, please enter your room number again.'
+        text='Your log in details are wrong, please enter your room number again or type /cancel to end your session.'
         )
         return UPDATE_ID
 
-    text = "You have been logged into " + user_input + ". \nPlease enter your preferred lower credit limit. (e.g. 2.50)"
+    text = "You have been logged into " + user_input + ". \nPlease enter your preferred lower credit limit. (e.g. 2.50) or type /cancel to end your session."
 
     context.bot.send_message(
         text=text,
@@ -193,13 +179,13 @@ def prompt_end_buttons(update, context):
     user_input = update.message.text.replace(" ", "")
 
     if (user_input == "/cancel"):
-        update.message.reply_text("Your session has been terminated. Please type /start to begin a new one.", reply_markup=ReplyKeyboardRemove())
-        return ConversationHandler.END
+        cancel(update)
+        return 
 
     if not ((user_input.isdigit()) or isfloat(user_input)):
         context.bot.send_message(
             chat_id=chat_id,
-            text='Please enter a valid amount.'
+            text='Please enter a valid amount or type /cancel to end your session.'
         )
         return UPDATE_END
 
@@ -220,9 +206,7 @@ def prompt_end_buttons(update, context):
         text=text
     )
 
-    # can input their current room information and lower credit limit
-    text2 = "The following is your current information: \n\nRoom Unit Number: " + str(room_unit_no) + "\nEVS Username: " + str(evs_username) + "\nLower Credit Limit: $" + str(lower_credit_limit) + "\n\nYou can access our other functions here!"
-    update.message.reply_text(text=text2, reply_markup=main_options_keyboard())
+    showInfo(room_unit_no,evs_username,lower_credit_limit,update)
     
     return ConversationHandler.END
 
@@ -233,7 +217,7 @@ def prompt_unit(update, context):
     context.bot.edit_message_text(
         chat_id=query.message.chat_id,
         message_id=query.message.message_id,
-        text = 'May I know your room unit number? (e.g. #01-01 or #01-01A)'
+        text = 'May I know your room unit number? (e.g. #01-01 or #01-01A) or type /cancel to end your session.'
     )
     return UPDATE_ID
 
@@ -242,13 +226,13 @@ def prompt_notif_end(update, context):
     user_input = update.message.text.replace(" ", "")
     
     if (user_input == "/cancel"):
-        update.message.reply_text("Your session has been terminated. Please type /start to begin a new one.", reply_markup=ReplyKeyboardRemove())
-        return ConversationHandler.END
+        cancel(update)
+        return 
 
     if not (user_input.isdigit() and len(user_input) == 8):
         context.bot.send_message(
         chat_id=chat_id,
-        text='Please enter a valid username.'
+        text='Please enter a valid username or type /cancel to end your session.'
         )
         return UPDATE_NOTIF
     
@@ -259,7 +243,7 @@ def prompt_notif_end(update, context):
     if scraper(evs_username,room_unit_no) == None:
         context.bot.send_message(
         chat_id=chat_id,
-        text='Your log in details are wrong, please enter your room unit number again. (e.g. #01-01 or #01-01A)'
+        text='Your log in details are wrong, please enter your room unit number again. (e.g. #01-01 or #01-01A) or type /cancel to end your session.'
         )
         return UPDATE_ID
 
@@ -278,8 +262,7 @@ def prompt_notif_end(update, context):
         chat_id=chat_id
     )
 
-    text2 = "The following is your current information: \n\nRoom Unit Number: " + str(room_unit_no) + "\nEVS Username: " + str(evs_username) + "\nLower Credit Limit: $" + str(lower_credit_limit) + "\n\nYou can access our other functions here!"
-    update.message.reply_text(text=text2, reply_markup=main_options_keyboard())
+    showInfo(room_unit_no,evs_username,lower_credit_limit,update)
 
     return ConversationHandler.END
 
@@ -290,7 +273,7 @@ def prompt_notif_update(update, context):
     context.bot.edit_message_text(
         chat_id=query.message.chat_id,
         message_id=query.message.message_id,
-        text = 'What would you like to change your lower credit limit to? (e.g. 2.50)'
+        text = 'What would you like to change your lower credit limit to? (e.g. 2.50) or type /cancel to end your session.'
     )
     return UPDATE_END
 
@@ -299,13 +282,13 @@ def prompt_end(update, context):
     user_input = update.message.text.replace(" ", "")
 
     if (user_input == "/cancel"):
-        update.message.reply_text("Your session has been terminated. Please type /start to begin a new one.", reply_markup=ReplyKeyboardRemove())
-        return ConversationHandler.END
+        cancel(update)
+        return 
 
     if not ((user_input.isdigit()) or isfloat(user_input)):
         context.bot.send_message(
             chat_id=chat_id,
-            text='Please enter a valid amount.'
+            text='Please enter a valid amount or type /cancel to end your session.'
         )
         return UPDATE_END
 
@@ -324,8 +307,8 @@ def prompt_end(update, context):
         chat_id=chat_id,
         text=text
     )
-    text2 = "The following is your current information: \n\nRoom Unit Number: " + str(room_unit_no) + "\nEVS Username: " + str(evs_username) + "\nLower Credit Limit: $" + str(lower_credit_limit) + "\n\nYou can access our other functions here!"
-    update.message.reply_text(text=text2, reply_markup=main_options_keyboard())
+
+    showInfo(room_unit_no,evs_username,lower_credit_limit,update)
     
     return ConversationHandler.END
 
