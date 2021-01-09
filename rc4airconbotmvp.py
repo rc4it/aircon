@@ -97,25 +97,24 @@ UPDATE_ID, UPDATE_NOTIF, UPDATE_END = range(3)
 def prompt_id(update, context):
     chat_id = update.message.chat.id
     user_input = update.message.text.replace(" ", "")
+    
+    def error():
+        context.bot.send_message(
+        chat_id=chat_id,
+        text='Please key in using this format #xx-xx or #xx-xxx, or type /cancel to end your session.'
+        )
 
     if (user_input == "/cancel"):
         cancel(update)
         return 
 
     if (len(user_input) != 7 and len(user_input) != 6) or (user_input[0] != '#') or (user_input[3] != '-'):
-        context.bot.send_message(
-        chat_id=chat_id,
-        text='Please key in using this format #xx-xx or #xx-xxx, or type /cancel to end your session.'
-        )
-
+        error()
         return UPDATE_ID
     
     if (len(user_input) == 7) and not (user_input[6].isalpha()):
-         context.bot.send_message(
-         chat_id=chat_id,
-         text='Please key in using this format #xx-xx or #xx-xxx, or type /cancel to end your session.'
-         )       
-         return UPDATE_ID
+        error()  
+        return UPDATE_ID
     
     i = 1
     while i < 6:
@@ -123,10 +122,7 @@ def prompt_id(update, context):
             i += 1
             continue
         if (not user_input[i].isdigit()):
-            context.bot.send_message(
-            chat_id=chat_id,
-            text='Please key in using this format #xx-xx or #xx-xxx, or type /cancel to end your session.'
-            )
+            error()
             return UPDATE_ID
         i += 1
 
