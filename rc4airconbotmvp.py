@@ -38,6 +38,8 @@ import time, datetime, pytz
 # creating database
 URI = 'mysql://' + sqlID + ':' + sqlPASSWORD + '@localhost/aircon'
 engine = create_engine(URI, echo = True)
+
+## Section 1 Start
 Base = declarative_base()
 
 # table structure
@@ -50,6 +52,9 @@ class User(Base):
     lower_credit_limit = Column(Float(100))
 
 Base.metadata.create_all(engine)
+## Section 1 End
+## Separate Section 1 into models.py file
+
 
 # starting session
 Session = sessionmaker(bind = engine)
@@ -62,6 +67,7 @@ def isfloat(value):
     except ValueError:
         return False
 
+## Change to a constant instead (i.e. MAIN_OPTIONS_KEYBOARD = InlineKeyboardMarkup([...]))
 def main_options_keyboard():
     keyboard = [
         [InlineKeyboardButton("Update Room Information", callback_data='update_id')],
@@ -74,8 +80,10 @@ def main_options_keyboard():
 def start(update, context):
     print("UPDATE:", update)
     print("CONTEXT:", context)
+    ## Remove global
     global chat_id
     chat_id = update.message.chat.id
+    ## Remove global
     global username
     username = update.message.from_user.username
 
@@ -86,6 +94,7 @@ def start(update, context):
     
     if user != None:  # if user has previously used the bot 
 
+        ## Remove global (same for the rest)
         global room_unit_no
         room_unit_no = user.room_unit_no  
 
@@ -106,16 +115,20 @@ def start(update, context):
     )
     return UPDATE_ID
 
+## Shift this line before the start method (start uses UPDATE_ID)
 # New User
 UPDATE_ID, UPDATE_NOTIF, UPDATE_END = range(3)
 def prompt_id(update, context):
     chat_id = update.message.chat.id
     user_input = update.message.text.replace(" ", "")
 
+    ## Define a separate cancel message handler
     if (user_input == "/cancel"):
         update.message.reply_text("Your session has been terminated. Please type /start to begin a new one.", reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
 
+    ## Would be cleaner to use regex instead (but not high priority)
+    ## Spoiler: /^[0-9]{2}-[0-9]{2}[A-F]?$/
     if (len(user_input) != 7 and len(user_input) != 6) or (user_input[0] != '#') or (user_input[3] != '-'):
         context.bot.send_message(
         chat_id=chat_id,
@@ -162,6 +175,7 @@ def prompt_notif(update, context):
         update.message.reply_text("Your session has been terminated. Please type /start to begin a new one.", reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
 
+    ## Use Regex
     if not (user_input.isdigit() and len(user_input) == 8):
         context.bot.send_message(
         chat_id=chat_id,
@@ -196,6 +210,7 @@ def prompt_end_buttons(update, context):
         update.message.reply_text("Your session has been terminated. Please type /start to begin a new one.", reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
 
+    ## Use regex
     if not ((user_input.isdigit()) or isfloat(user_input)):
         context.bot.send_message(
             chat_id=chat_id,
@@ -213,6 +228,7 @@ def prompt_end_buttons(update, context):
     session.add(user)
     session.commit()
 
+    ## Use %.2f to format the currency
     text = "Your lower credit limit has been set to $" + str(Decimal(user_input)) + ". \nInformation has been updated."
 
     context.bot.send_message(
@@ -302,6 +318,7 @@ def prompt_end(update, context):
         update.message.reply_text("Your session has been terminated. Please type /start to begin a new one.", reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
 
+    ## Use regex
     if not ((user_input.isdigit()) or isfloat(user_input)):
         context.bot.send_message(
             chat_id=chat_id,

@@ -1,6 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
-
+## Scraper should return a float (the current balance)
 def scraper(meterID,room):
 
     # deriving password 
