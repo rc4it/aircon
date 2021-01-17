@@ -1,5 +1,5 @@
-sqlID = 'root'
-sqlPASSWORD = 'Biryani158*'
+sqlID = ''
+sqlPASSWORD = ''
 
 
 
