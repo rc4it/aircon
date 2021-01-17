@@ -9,8 +9,8 @@ from scraper import scraper
 import time, datetime, pytz
 
 # creating database
-sqlID = 'root'
-sqlPASSWORD = 'Biryani158*'
+sqlID = ''
+sqlPASSWORD = ''
 URI = 'mysql://' + sqlID + ':' + sqlPASSWORD + '@localhost/aircon'
 engine = create_engine(URI, echo = True)
 Base = declarative_base()
