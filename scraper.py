@@ -26,17 +26,19 @@ def scraper(meterID,room):
 
     try: 
         txt = soup.find_all(class_ = 'mainContent_normalText')[1]
-        return txt.get_text()
+        balance = txt.get_text()
+        index = balance.index('$')
+        return float(balance[index+2:])
     except:
         return None
+
+    
 
 #balance = scraper('10001103','#13-01A')
 #index = balance.index('$')
 #value = float(balance[index+2:])
 
-#def lowerLimitCheck(value):
-#    if value < lower_credit_limit:
-#        text = 'You have $' + value + ' remaining. \nYou can top up at https://nus-utown.evs.com.sg/.' 
+
 
 
 
