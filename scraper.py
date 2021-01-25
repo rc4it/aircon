@@ -32,12 +32,6 @@ def scraper(meterID,room):
     except:
         return None
 
-    
-
-#balance = scraper('10001103','#13-01A')
-#index = balance.index('$')
-#value = float(balance[index+2:])
-
 
 
 
