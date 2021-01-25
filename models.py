@@ -22,3 +22,8 @@ Base.metadata.create_all(engine)
 
 # starting session
 Session = sessionmaker(bind = engine)
+
+
+#user = session.query(User).get(username)
+#user.evs_username = user_input
+#session.commit()

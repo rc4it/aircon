@@ -1,67 +1,16 @@
-sqlID = 'root'
-sqlPASSWORD = 'Password1'
-<<<<<<< Updated upstream
-=======
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
->>>>>>> Stashed changes
-
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ParseMode, ReplyKeyboardMarkup, KeyboardButton, Message, Bot, ReplyKeyboardRemove
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, ConversationHandler, CallbackQueryHandler, CallbackContext
 from decimal import Decimal
-from scraper import *
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, create_engine, Float
-from sqlalchemy.orm import sessionmaker
 from scraper import scraper
 import time, datetime, pytz
+from models import Session, User
+import re 
 
-# creating database
-URI = 'mysql://' + sqlID + ':' + sqlPASSWORD + '@localhost/aircon'
-engine = create_engine(URI, echo = True)
-Base = declarative_base()
-
-# table structure
-class User(Base):  
-    __tablename__ = 'users'
-    
-    username = Column(String(100),primary_key=True)
-    evs_username = Column(String(10))
-    room_unit_no = Column(String(10))
-    lower_credit_limit = Column(Float(100))
-
-Base.metadata.create_all(engine)
-
-# starting session
-Session = sessionmaker(bind = engine)
 session = Session()
 
 # cancel 
 def cancel(update):
     update.message.reply_text("Your session has been terminated. Please type /start to begin a new one.", reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
     
 # helper function 1
 def isfloat(value):
@@ -73,45 +22,55 @@ def isfloat(value):
 
 # helper function 2
 def showInfo(room_unit_no,evs_username,lower_credit_limit,update):
-    text2 = "The following is your current information: \n\nRoom Unit Number: " + str(room_unit_no) + "\nEVS Username: " + str(evs_username) + "\nLower Credit Limit: $" + str(lower_credit_limit) + "\n\nYou can access our other functions here!"
+    
+    text2 = "The following is your current information: \n\nRoom Unit Number: " + str(room_unit_no) + "\nEVS Username: " + str(evs_username) + "\nLower Credit Limit: $" + "{:.2f}".format(float(lower_credit_limit)) + "\n\nYou can access our other functions here!"
     update.message.reply_text(text=text2, reply_markup=main_options_keyboard())
 
 def main_options_keyboard():
     keyboard = [
         [InlineKeyboardButton("Update Room Information", callback_data='update_id')],
         [InlineKeyboardButton("Update Lower Credit Limit", callback_data='update_credit')],
+        [InlineKeyboardButton("On/Off Notification Alert", callback_data='update_alert')],
         [InlineKeyboardButton("Check Aircon Credit Balance", callback_data='check_balance')]
     ]
     return InlineKeyboardMarkup(keyboard)
 
+
+def notification_keyboard():
+    keyboard = [
+        [InlineKeyboardButton("On Alert", callback_data='on_notif'), InlineKeyboardButton("Off Alert", callback_data='off_notif')]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
 # /start
+UPDATE_ID, UPDATE_NOTIF, UPDATE_END = range(3)
+
 def start(update, context):
     print("UPDATE:", update)
     print("CONTEXT:", context)
-    global chat_id
+
     chat_id = update.message.chat.id
-    global username
     username = update.message.from_user.username
 
-    # search table for specific user according to tele handle 
-    # creates a 'user' object, which has attributes which correspond to the rows of the table 
-    # if unsuccessful (data is not present), will return None 
     user = session.query(User).get(username)
-    
+
     if user != None:  # if user has previously used the bot 
 
-        global room_unit_no
         room_unit_no = user.room_unit_no  
 
-        global evs_username
         evs_username = user.evs_username
 
-        global lower_credit_limit
         lower_credit_limit = user.lower_credit_limit
 
         showInfo(room_unit_no,evs_username,lower_credit_limit,update)
 
         return ConversationHandler.END
+
+    # creating a row for a new user
+    newuser = User(username = username,evs_username = 0, room_unit_no = 0, lower_credit_limit = 0)
+ 
+    session.add(newuser)
+    session.commit()
 
     context.bot.send_message(
         chat_id=chat_id,
@@ -120,9 +79,10 @@ def start(update, context):
     return UPDATE_ID
 
 # New User
-UPDATE_ID, UPDATE_NOTIF, UPDATE_END = range(3)
+
 def prompt_id(update, context):
     chat_id = update.message.chat.id
+    username = update.message.from_user.username
     user_input = update.message.text.replace(" ", "")
     
     def error():
@@ -133,28 +93,20 @@ def prompt_id(update, context):
 
     if (user_input == "/cancel"):
         cancel(update)
-        return 
+        return ConversationHandler.END
 
-    if (len(user_input) != 7 and len(user_input) != 6) or (user_input[0] != '#') or (user_input[3] != '-'):
+    pattern = r'#\d\d-\d\d\w?'
+
+    if not re.match(pattern,user_input):
         error()
         return UPDATE_ID
-    
-    if (len(user_input) == 7) and not (user_input[6].isalpha()):
-        error()  
-        return UPDATE_ID
-    
-    i = 1
-    while i < 6:
-        if i == 3:
-            i += 1
-            continue
-        if (not user_input[i].isdigit()):
-            error()
-            return UPDATE_ID
-        i += 1
 
-    global room_unit_no
     room_unit_no = user_input
+
+    user = session.query(User).get(username)
+    user.room_unit_no = room_unit_no
+    session.commit()
+
     text = "Your room " + user_input + " has been registered. \nPlease enter your EVS Username. (e.g. 12345678)"
 
     context.bot.send_message(
@@ -163,22 +115,30 @@ def prompt_id(update, context):
     )
     return UPDATE_NOTIF
 
+# enter EVS username
 def prompt_notif(update, context):
     chat_id = update.message.chat.id
+    username = update.message.from_user.username
+
     user_input = update.message.text.replace(" ", "")
     
+    user = session.query(User).get(username)
+    room_unit_no = user.room_unit_no
+
     if (user_input == "/cancel"):
         cancel(update)
-        return 
-
-    if not (user_input.isdigit() and len(user_input) == 8):
+        return ConversationHandler.END
+    
+    pattern = r'\d{8}'
+    
+    if not re.match(pattern,user_input):
         context.bot.send_message(
         chat_id=chat_id,
         text='Please enter a valid username or type /cancel to end your session.'
         )
         return UPDATE_NOTIF
 
-    global evs_username
+    
     evs_username = user_input
 
     # check if login details are correct with scraper 
@@ -191,19 +151,25 @@ def prompt_notif(update, context):
 
     text = "You have been logged into " + user_input + ". \nPlease enter your preferred lower credit limit. (e.g. 2.50) or type /cancel to end your session."
 
+    user = session.query(User).get(username)
+    user.evs_username = user_input
+    session.commit()
+
     context.bot.send_message(
         text=text,
         chat_id=chat_id
     )
     return UPDATE_END
 
+# enter lower credit limit
 def prompt_end_buttons(update, context):
     chat_id = update.message.chat.id
+    username = update.message.from_user.username
     user_input = update.message.text.replace(" ", "")
 
     if (user_input == "/cancel"):
         cancel(update)
-        return 
+        return ConversationHandler.END
 
     if not ((user_input.isdigit()) or isfloat(user_input)):
         context.bot.send_message(
@@ -212,17 +178,17 @@ def prompt_end_buttons(update, context):
         )
         return UPDATE_END
 
-    global lower_credit_limit
+    
     lower_credit_limit = user_input
 
-    # add all of users details into database
-    user = User(username = username,evs_username = evs_username, room_unit_no = room_unit_no, lower_credit_limit = lower_credit_limit)
+    user = session.query(User).get(username)
+    user.lower_credit_limit = user_input
+    evs_username = user.evs_username
+    room_unit_no = user.room_unit_no
 
-    # committing changes to the database 
-    session.add(user)
     session.commit()
 
-    text = "Your lower credit limit has been set to $" + str(Decimal(user_input)) + ". \nInformation has been updated."
+    text = "Your lower credit limit has been set to $" + "{:.2f}".format(user_input) + ". \nInformation has been updated."
 
     context.bot.send_message(
         chat_id=chat_id,
@@ -242,24 +208,31 @@ def prompt_unit(update, context):
         message_id=query.message.message_id,
         text = 'May I know your room unit number? (e.g. #01-01 or #01-01A) or type /cancel to end your session.'
     )
+
+
     return UPDATE_ID
 
 def prompt_notif_end(update, context):
     chat_id = update.message.chat.id
+    username = update.message.from_user.username
     user_input = update.message.text.replace(" ", "")
-    
+
+    user = session.query(User).get(username)
+    room_unit_no = user.room_unit_no
+
     if (user_input == "/cancel"):
         cancel(update)
-        return 
+        return ConversationHandler.END
 
-    if not (user_input.isdigit() and len(user_input) == 8):
+    pattern = r'\d{8}'
+    
+    if not re.match(pattern,user_input):
         context.bot.send_message(
         chat_id=chat_id,
         text='Please enter a valid username or type /cancel to end your session.'
         )
         return UPDATE_NOTIF
     
-    global evs_username
     evs_username = user_input
 
     # check if credentials are correct 
@@ -272,9 +245,9 @@ def prompt_notif_end(update, context):
 
     user = session.query(User).get(username)
 
-    # modifying existing values in the database to new ones 
     user.evs_username = evs_username
     user.room_unit_no = room_unit_no
+    lower_credit_limit = user.lower_credit_limit
 
     session.commit()
 
@@ -300,13 +273,15 @@ def prompt_notif_update(update, context):
     )
     return UPDATE_END
 
+# update lower credit limit 
 def prompt_end(update, context):
     chat_id = update.message.chat.id
+    username = update.message.from_user.username
     user_input = update.message.text.replace(" ", "")
 
     if (user_input == "/cancel"):
         cancel(update)
-        return 
+        return ConversationHandler.END
 
     if not ((user_input.isdigit()) or isfloat(user_input)):
         context.bot.send_message(
@@ -315,16 +290,18 @@ def prompt_end(update, context):
         )
         return UPDATE_END
 
-    global lower_credit_limit
     lower_credit_limit = user_input
 
     # update database with new lower limit
     user = session.query(User).get(username)
 
+    evs_username = user.evs_username
+    room_unit_no = user.room_unit_no
+
     user.lower_credit_limit = lower_credit_limit
     session.commit()
 
-    text = "Your lower credit limit has been set to $" + str(Decimal(user_input)) + ". \nInformation has been updated."
+    text = "Your lower credit limit has been set to $" + "{:.2f}".format(float(user_input)) + ". \nInformation has been updated."
 
     context.bot.send_message(
         chat_id=chat_id,
@@ -338,22 +315,24 @@ def prompt_end(update, context):
 # Check Aircon Credit Balance
 def check_balance(update, context):
     query = update.callback_query
-
+    username = update.callback_query.message.chat.username
+    
     # extract information from database, passing into scraper to return output 
     user = session.query(User).get(username)
 
     evs_username = user.evs_username
     room_unit_no = user.room_unit_no
+    lower_credit_limit = user.lower_credit_limit
 
     balance = scraper(evs_username,room_unit_no)
 
     context.bot.edit_message_text(
         chat_id=query.message.chat_id,
         message_id=query.message.message_id,
-        text= '------------' + balance + '------------' + '\nPlease visit https://nus-utown.evs.com.sg/ to top-up your credits.'
+        text= 'Your credit balance is : $' + "{:.2f}".format(balance) + '\nPlease visit https://nus-utown.evs.com.sg/EVSWebPOS/web/index.jsp to top-up your credits.'
     )
 
-    text2 = "The following is your current information: \n\nRoom Unit Number: " + str(room_unit_no) + "\nEVS Username: " + str(evs_username) + "\nLower Credit Limit: $" + str(lower_credit_limit) + "\n\nYou can access our other functions here!"
+    text2 = "The following is your current information: \n\nRoom Unit Number: " + str(room_unit_no) + "\nEVS Username: " + str(evs_username) + "\nLower Credit Limit: $" + "{:.2f}".format(lower_credit_limit) + "\n\nYou can access our other functions here!"
     context.bot.send_message(
         chat_id=query.message.chat_id,
         text=text2,
@@ -362,30 +341,89 @@ def check_balance(update, context):
     return ConversationHandler.END
 
 # Send Notification
-def daily_job(update, context):
-    time_zone = pytz.timezone("Asia/Singapore")
-    reset_time = datetime.time(hour=23, minute=55, second=30, tzinfo=time_zone)
-    context.job_queue.run_daily(send_notification, reset_time, days = tuple(range(5)), context=update)
+def remove_job(name, context):
+    current_jobs = context.job_queue.get_jobs_by_name(name)
+    if not current_jobs:
+        return 
+    for job in current_jobs:
+        job.schedule_removal()
 
+# lower limit notification 
+def prompt_on_off(update, context):
+    query = update.callback_query
+    text = "Please select the options below to on/off notifications"
+    context.bot.edit_message_text(
+        chat_id=query.message.chat_id,
+        message_id=query.message.message_id,
+        text=text,
+        reply_markup=notification_keyboard()
+    )
+
+# off lower limit notification 
+def on_notif(update, context):
+    query = update.callback_query
+    username = update.callback_query.message.chat.username
+    chat_id=query.message.chat_id
+
+    remove_job(str(chat_id), context) #remove any existing jobs
+    time_zone = pytz.timezone("Asia/Singapore")
+    reset_time = datetime.time(hour=20, minute=0, second=0, tzinfo=time_zone)
+    #context.job_queue.run_daily(send_notification, reset_time, days = tuple(range(7)), context=update, name=str(chat_id))
+
+    # to play around with
+    context.job_queue.run_repeating(send_notification, interval = 15, first = 0, context=update, name=str(chat_id))
+
+    text = "We will inform you when your aircon credit balance is below your lower credit limit."
+    context.bot.edit_message_text(
+        chat_id=chat_id,
+        message_id=query.message.message_id,
+        text=text
+    )
+
+    user = user = session.query(User).get(username)
+    room_unit_no = user.room_unit_no
+    evs_username = user.evs_username
+    lower_credit_limit = user.lower_credit_limit
+
+    showInfo(room_unit_no,evs_username,lower_credit_limit,query)
+
+# check credit balance button
 def send_notification(context):
-    username = context.job.context.message.from_user.username
+    username = context.job.context.callback_query.message.chat.username
 
     user = session.query(User).get(username)
     evs_username = user.evs_username
     room_unit_no = user.room_unit_no
     lower_credit_limit = user.lower_credit_limit
 
-    # this returns the full string e.g. 'total balance: $ 1.50' 
     balance = scraper(evs_username,room_unit_no)
 
-    # indexing the dollar sign to extract the '1.50' from the above string
-    index = balance.index('$')
-    value = float(balance[index+2:])
-
-    if (lower_credit_limit > value):
-        context.job.context.message.reply_text(
-            "Your credit balance is currently: $" + str(value) + ". You can top up at https://nus-utown.evs.com.sg/."
+    if (lower_credit_limit > balance):
+        context.job.context.effective_user.send_message(
+            text="Your credit balance is currently: $" + "{:,.2f}".format(balance) + ". Please visit https://nus-utown.evs.com.sg/EVSWebPOS/web/index.jsp to top up your credits."
         )
+
+# turn on lower limit notification 
+def off_notif(update, context):
+    query = update.callback_query
+    chat_id=query.message.chat_id
+    username = update.callback_query.message.chat.username
+    
+    remove_job(str(chat_id), context)
+
+    text = "Notification alert has been stopped."
+    context.bot.edit_message_text(
+        chat_id=chat_id,
+        message_id=query.message.message_id,
+        text=text
+    )
+    user = session.query(User).get(username)
+    
+    room_unit_no = user.room_unit_no
+    evs_username = user.evs_username
+    lower_credit_limit = user.lower_credit_limit
+
+    showInfo(room_unit_no,evs_username,lower_credit_limit,query)
 
 # main()
 BOT_TOKEN = "1498781046:AAEtpdoE6uorK4iCpjTj-YNvBMIA3pIimAc"
@@ -430,9 +468,12 @@ def main():
         )
     )
 
+    dp.add_handler(CallbackQueryHandler(prompt_on_off, pattern='update_alert'))
+    dp.add_handler(CallbackQueryHandler(on_notif, pattern='on_notif'))
+    dp.add_handler(CallbackQueryHandler(off_notif, pattern='off_notif'))
     dp.add_handler(CallbackQueryHandler(check_balance, pattern='check_balance'))
 
-    dp.add_handler(CommandHandler('notify', daily_job))
+    # dp.add_handler(CommandHandler('notify', daily_job))
 
     updater.start_polling()
     updater.idle()
